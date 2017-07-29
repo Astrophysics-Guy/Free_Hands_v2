@@ -1,5 +1,7 @@
 import java.awt.*;
 import java.awt.event.*;
+import java.awt.image.BufferedImage;
+import java.awt.image.DataBufferInt;
 import java.io.File;
 import java.io.IOException;
 import java.lang.Thread.UncaughtExceptionHandler;
@@ -45,8 +47,21 @@ public class WebCam extends JFrame implements Runnable, WebcamListener, WindowLi
     private final String nomApp = "Free Hands"; // Name of the App
     private final Path path = Paths.get(System.getProperty("user.home") + System.getProperty("file.separator") + nomApp); // Main working dir
 
-    @Override
-    public void run() {
+    private int[] pixelRaster = null; //pixel raster for initial cam image
+    private BufferedImage initialWebcamImage; //initial cam image
+
+    Graphics bufferGraphics; //Double buffer!!! Very important to have no jitter effects
+    Image offscreen; // double buffer image
+
+    Rectangle boxPosition; //Red box location
+
+    private int width,height; //height and width of camera
+
+    private void paint() {
+        System.out.println("Painting ...");
+    }
+
+    private WebCam() {
         /*switch (System.getProperty("file.separator")) { // Check file system, doesn't count for mac (idk honestly), use the one below
             case "/":
                 System.out.println("File system is Linux");
@@ -119,19 +134,31 @@ public class WebCam extends JFrame implements Runnable, WebcamListener, WindowLi
 
         JPanel jPanelTakePics = new JPanel();
 
-        webcamPicker = new WebcamPicker();
-        webcamPicker.addItemListener(this);
+        //webcamPicker = new WebcamPicker();
+        //webcamPicker.addItemListener(this);
 
-        webcam = webcamPicker.getSelectedWebcam();
+        //webcam = webcamPicker.getSelectedWebcam();
 
-        if (webcam == null) { // Affiche un message d'erreur s'il ne trouve pas de WebCam et quitte l'App
+        /*if (webcam == null) { // Affiche un message d'erreur s'il ne trouve pas de WebCam et quitte l'App
             System.out.println("No WebCams found...");
             JOptionPane.showMessageDialog(null, "No WebCams found...", "Error", JOptionPane.ERROR_MESSAGE);
             System.exit(1);
-        }
+        }*/
 
-        webcam.setViewSize(WebcamResolution.VGA.getSize());
-        webcam.addWebcamListener(WebCam.this);
+        //
+        webcam = Webcam.getDefault();
+        webcam.open();
+        //
+
+        //webcam.setViewSize(WebcamResolution.VGA.getSize());
+        //webcam.addWebcamListener(WebCam.this);
+
+        width = webcam.getViewSize().width;
+        height = webcam.getViewSize().height;
+
+        //initialize image buffer and pixel raster initialized according to buffer size
+        initialWebcamImage = new BufferedImage(width,height,BufferedImage.TYPE_INT_ARGB);
+        pixelRaster = ((DataBufferInt) initialWebcamImage.getRaster().getDataBuffer()).getData();
 
         webcamPanel = new WebcamPanel(webcam, false);
         webcamPanel.setFPSDisplayed(true);
@@ -198,7 +225,7 @@ public class WebCam extends JFrame implements Runnable, WebcamListener, WindowLi
             }
         });
 
-        add(webcamPicker, BorderLayout.NORTH);
+        //add(webcamPicker, BorderLayout.NORTH);
         add(webcamPanel, BorderLayout.CENTER);
         add(jPanelBorderSouth, BorderLayout.SOUTH);
 
@@ -223,22 +250,33 @@ public class WebCam extends JFrame implements Runnable, WebcamListener, WindowLi
         setLocationRelativeTo(null); // Center the whole thing
         setVisible(true); // Self explanatory
 
-        Thread t = new Thread() {
+        // add double buffer
+        offscreen = createImage(width*3,height*4);
+        bufferGraphics = offscreen.getGraphics();
+    }
 
-            @Override
-            public void run() {
-                webcamPanel.start();
+    @Override
+    public void run() {
+        while (true) {
+            repaint(); //repaint every 25 ms
+
+            try {
+                Thread.sleep(25); //sleep 25 ms
             }
-        };
-        t.setName("example-starter");
-        t.setDaemon(true);
-        t.setUncaughtExceptionHandler(this);
-        t.start();
+            catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
     }
 
     public static void main(String[] args) {
         //System.getProperties().list(System.out);
-        SwingUtilities.invokeLater(new WebCam());
+        //SwingUtilities.invokeLater(new WebCam());
+        WebCam w = new WebCam();
+        Thread t = new Thread(w);
+        t.setName("example-starter");
+        t.setDaemon(true);
+        t.start();
     }
 
     @Override
@@ -438,7 +476,7 @@ public class WebCam extends JFrame implements Runnable, WebcamListener, WindowLi
     /*private boolean dirExist(Path path) {
         return (Files.isDirectory(path));
     }*/
-    
+
     private void listenerBtnSubmit() {
         final String strJLabelResponse = jFormattedTextField.getText().replace(",", "").trim();
         int i = Integer.parseInt(((!strJLabelResponse.equals("")) ? strJLabelResponse : "0")), maxPic = 134217726;
